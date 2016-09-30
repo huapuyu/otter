@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -80,6 +81,10 @@ import com.alibaba.otter.shared.etl.model.EventData;
 import com.alibaba.otter.shared.etl.model.EventType;
 import com.alibaba.otter.shared.etl.model.Identity;
 import com.alibaba.otter.shared.etl.model.RowBatch;
+
+import kafka.javaapi.producer.Producer;
+import kafka.producer.KeyedMessage;
+import kafka.producer.ProducerConfig;
 
 /**
  * 数据库load的执行入口
@@ -545,6 +550,9 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
         }
 
         private Exception doCall() {
+        	
+        	sendToKafka(datas);
+        	
             RuntimeException error = null;
             ExecuteResult exeResult = null;
             int index = 0;// 记录下处理成功的记录下标
@@ -704,6 +712,35 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
             context.getFailedDatas().addAll(allFailedDatas);
             context.getProcessedDatas().addAll(allProcesedDatas);
             return null;
+        }
+        
+        private void sendToKafka(List<EventData> datas) {
+        	if (CollectionUtils.isEmpty(datas)) {
+        		return;
+        	}
+        	
+    		Properties props = new Properties();
+    		props.put("serializer.class", "kafka.serializer.DefaultEncoder");
+    		props.put("metadata.broker.list", "192.168.56.102:9092,192.168.56.103:9092,192.168.56.104:9092,192.168.56.105:9092,192.168.56.106:9092");
+    		props.put("key.serializer.class", "kafka.serializer.StringEncoder");
+//    		props.put("partitioner.class", "com.anders.kafka.PartitionerDemo");
+    		props.put("request.required.acks", "1");
+    		ProducerConfig config = new ProducerConfig(props);
+
+    		Producer<String, List<EventData>> producer = new Producer<String, List<EventData>>(config);
+    		KeyedMessage<String, List<EventData>> data = new KeyedMessage<String, List<EventData>>(
+    				"my-test-topic", datas);
+    		try {
+    			producer.send(data);
+    		} catch (Exception e) {
+    			e.printStackTrace();
+    		} finally {
+    			try {
+    				producer.close();
+    			} catch (Exception e) {
+    				e.printStackTrace();
+    			}
+    		}
         }
 
         private void doPreparedStatement(PreparedStatement ps, DbDialect dbDialect, LobCreator lobCreator,
@@ -889,5 +926,4 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     public void setUseBatch(boolean useBatch) {
         this.useBatch = useBatch;
     }
-
 }
