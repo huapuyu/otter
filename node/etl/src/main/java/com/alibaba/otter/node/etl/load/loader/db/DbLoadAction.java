@@ -33,10 +33,15 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import kafka.javaapi.producer.Producer;
+import kafka.producer.KeyedMessage;
+import kafka.producer.ProducerConfig;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.ddlutils.model.Column;
 import org.apache.ddlutils.model.Table;
+import org.msgpack.MessagePack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -71,6 +76,8 @@ import com.alibaba.otter.node.etl.load.loader.weight.WeightBuckets;
 import com.alibaba.otter.node.etl.load.loader.weight.WeightController;
 import com.alibaba.otter.shared.common.model.config.ConfigHelper;
 import com.alibaba.otter.shared.common.model.config.channel.Channel;
+import com.alibaba.otter.shared.common.model.config.channel.ChannelParameter.SyncConsistency;
+import com.alibaba.otter.shared.common.model.config.channel.ChannelParameter.SyncMode;
 import com.alibaba.otter.shared.common.model.config.data.DataMedia;
 import com.alibaba.otter.shared.common.model.config.data.DataMediaPair;
 import com.alibaba.otter.shared.common.model.config.data.db.DbMediaSource;
@@ -81,10 +88,6 @@ import com.alibaba.otter.shared.etl.model.EventData;
 import com.alibaba.otter.shared.etl.model.EventType;
 import com.alibaba.otter.shared.etl.model.Identity;
 import com.alibaba.otter.shared.etl.model.RowBatch;
-
-import kafka.javaapi.producer.Producer;
-import kafka.producer.KeyedMessage;
-import kafka.producer.ProducerConfig;
 
 /**
  * 数据库load的执行入口
@@ -108,6 +111,7 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     private int                 batchSize          = 50;
     private boolean             useBatch           = true;
     private LoadStatsTracker    loadStatsTracker;
+    private MessagePack messagePack = new MessagePack();
 
     /**
      * 返回结果为已处理成功的记录
@@ -505,6 +509,13 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
             new ArrayBlockingQueue(poolSize * 4),
             new NamedThreadFactory(WORKER_NAME),
             new ThreadPoolExecutor.CallerRunsPolicy());
+        
+		messagePack.register(EventType.class);
+		messagePack.register(EventColumn.class);
+		messagePack.register(SyncMode.class);
+		messagePack.register(SyncConsistency.class);
+		messagePack.register(EventData.class);
+		messagePack.register(Message.class);
     }
 
     public void destroy() throws Exception {
@@ -714,10 +725,14 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
             return null;
         }
         
-        private void sendToKafka(List<EventData> datas) {
+        private void sendToKafka(List<EventData> eventDatas) {
         	if (CollectionUtils.isEmpty(datas)) {
+        		logger.error("event data list is empty");
         		return;
         	}
+        	
+        	Message message = new Message();
+        	message.setEventDatas(eventDatas);
         	
     		Properties props = new Properties();
     		props.put("serializer.class", "kafka.serializer.DefaultEncoder");
@@ -727,18 +742,20 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     		props.put("request.required.acks", "1");
     		ProducerConfig config = new ProducerConfig(props);
 
-    		Producer<String, List<EventData>> producer = new Producer<String, List<EventData>>(config);
-    		KeyedMessage<String, List<EventData>> data = new KeyedMessage<String, List<EventData>>(
-    				"my-test-topic", datas);
+    		Producer<String, byte[]> producer = new Producer<String, byte[]>(config);
+    		
     		try {
+    			byte[] content = messagePack.write(message);
+    			KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>(
+        				"my-test-topic", content);
     			producer.send(data);
-    		} catch (Exception e) {
-    			e.printStackTrace();
+    		} catch (Throwable e) {
+    			logger.error(e.getMessage());
     		} finally {
     			try {
     				producer.close();
     			} catch (Exception e) {
-    				e.printStackTrace();
+    				logger.error(e.getMessage());
     			}
     		}
         }
