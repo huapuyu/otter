@@ -33,6 +33,8 @@
 		<property name="retryWait" value="3000" />
 		<property name="poolSize" value="5" />
 		<property name="interceptor" ref="dbLoadInterceptor" />
+		<property name="brokerList" value="${otter.kafka.brokerList}" />
+		<property name="topicName" value="${otter.kafka.topicName}" />
 	</bean>
 	
 	<bean id="fileLoadAction" class="org.springframework.aop.framework.ProxyFactoryBean">

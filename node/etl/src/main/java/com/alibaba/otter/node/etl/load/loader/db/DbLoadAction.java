@@ -66,6 +66,7 @@ import com.alibaba.otter.node.etl.common.db.dialect.DbDialectFactory;
 import com.alibaba.otter.node.etl.common.db.dialect.mysql.MysqlDialect;
 import com.alibaba.otter.node.etl.common.db.utils.SqlUtils;
 import com.alibaba.otter.node.etl.load.exception.LoadException;
+import com.alibaba.otter.node.etl.load.exception.SendMQException;
 import com.alibaba.otter.node.etl.load.loader.LoadStatsTracker;
 import com.alibaba.otter.node.etl.load.loader.LoadStatsTracker.LoadCounter;
 import com.alibaba.otter.node.etl.load.loader.LoadStatsTracker.LoadThroughput;
@@ -111,6 +112,9 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     private int                 batchSize          = 50;
     private boolean             useBatch           = true;
     private LoadStatsTracker    loadStatsTracker;
+    private String				brokerList;
+    private String				topicName 		   = "databus";
+    private Producer<String, byte[]> producer;
     private MessagePack messagePack = new MessagePack();
 
     /**
@@ -516,10 +520,28 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
 		messagePack.register(SyncConsistency.class);
 		messagePack.register(EventData.class);
 		messagePack.register(Message.class);
+		
+		Properties props = new Properties();
+		props.put("serializer.class", "kafka.serializer.DefaultEncoder");
+		props.put("metadata.broker.list", brokerList);
+		props.put("key.serializer.class", "kafka.serializer.StringEncoder");
+//		props.put("partitioner.class", "com.anders.kafka.PartitionerDemo");
+		props.put("request.required.acks", "1");
+		ProducerConfig config = new ProducerConfig(props);
+
+		producer = new Producer<String, byte[]>(config);
     }
 
     public void destroy() throws Exception {
-        executor.shutdownNow();
+        if (producer != null) {
+        	try {
+				producer.close();
+			} catch (Exception e) {
+				logger.error(e.getMessage());
+			}
+        }
+        
+    	executor.shutdownNow();
     }
 
     enum ExecuteResult {
@@ -734,29 +756,14 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
         	Message message = new Message();
         	message.setEventDatas(eventDatas);
         	
-    		Properties props = new Properties();
-    		props.put("serializer.class", "kafka.serializer.DefaultEncoder");
-    		props.put("metadata.broker.list", "192.168.56.102:9092,192.168.56.103:9092,192.168.56.104:9092,192.168.56.105:9092,192.168.56.106:9092");
-    		props.put("key.serializer.class", "kafka.serializer.StringEncoder");
-//    		props.put("partitioner.class", "com.anders.kafka.PartitionerDemo");
-    		props.put("request.required.acks", "1");
-    		ProducerConfig config = new ProducerConfig(props);
-
-    		Producer<String, byte[]> producer = new Producer<String, byte[]>(config);
-    		
     		try {
     			byte[] content = messagePack.write(message);
     			KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>(
-        				"my-test-topic", content);
+        				topicName, content);
     			producer.send(data);
     		} catch (Throwable e) {
-    			logger.error(e.getMessage());
-    		} finally {
-    			try {
-    				producer.close();
-    			} catch (Exception e) {
-    				logger.error(e.getMessage());
-    			}
+    			logger.error("failed to send message [{}]", e.getMessage());
+    			throw new SendMQException(e);
     		}
         }
 
@@ -943,4 +950,20 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     public void setUseBatch(boolean useBatch) {
         this.useBatch = useBatch;
     }
+
+	public String getBrokerList() {
+		return brokerList;
+	}
+
+	public void setBrokerList(String brokerList) {
+		this.brokerList = brokerList;
+	}
+
+	public String getTopicName() {
+		return topicName;
+	}
+
+	public void setTopicName(String topicName) {
+		this.topicName = topicName;
+	}
 }
