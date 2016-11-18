@@ -33,14 +33,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import kafka.javaapi.producer.Producer;
-import kafka.producer.KeyedMessage;
-import kafka.producer.ProducerConfig;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.ddlutils.model.Column;
 import org.apache.ddlutils.model.Table;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.msgpack.MessagePack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,7 +112,8 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     private LoadStatsTracker    loadStatsTracker;
     private String				brokerList;
     private String				topicName 		   = "databus";
-    private Producer<String, byte[]> producer;
+    //private Producer<String, byte[]> producer;
+    private KafkaProducer<String, byte[]> producer;
     private MessagePack messagePack = new MessagePack();
 
     /**
@@ -521,15 +520,23 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
 		messagePack.register(EventData.class);
 		messagePack.register(Message.class);
 		
-		Properties props = new Properties();
-		props.put("serializer.class", "kafka.serializer.DefaultEncoder");
-		props.put("metadata.broker.list", brokerList);
-		props.put("key.serializer.class", "kafka.serializer.StringEncoder");
+		// kafka 0.8.2.2
+//		Properties props = new Properties();
+//		props.put("serializer.class", "kafka.serializer.DefaultEncoder");
+//		props.put("metadata.broker.list", brokerList);
+//		props.put("key.serializer.class", "kafka.serializer.StringEncoder");
 //		props.put("partitioner.class", "com.anders.kafka.PartitionerDemo");
-		props.put("request.required.acks", "1");
-		ProducerConfig config = new ProducerConfig(props);
-
-		producer = new Producer<String, byte[]>(config);
+//		props.put("request.required.acks", "1");
+//		ProducerConfig config = new ProducerConfig(props);
+//		producer = new Producer<String, byte[]>(config);
+		
+		// kafka 0.10.0.0
+		Properties props = new Properties();
+		props.put("bootstrap.servers", brokerList);
+		props.put("client.id", "otterProducer");
+		props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		props.put("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
+		producer = new KafkaProducer<String, byte[]>(props);
     }
 
     public void destroy() throws Exception {
@@ -747,7 +754,7 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
             return null;
         }
         
-        private void sendToKafka(List<EventData> eventDatas) {
+		private void sendToKafka(List<EventData> eventDatas) {
         	if (CollectionUtils.isEmpty(datas)) {
         		logger.error("event data list is empty");
         		return;
@@ -758,9 +765,11 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
         	
     		try {
     			byte[] content = messagePack.write(message);
-    			KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>(
-        				topicName, content);
-    			producer.send(data);
+//    			KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>(
+//        				topicName, content);
+//    			producer.send(data);
+				ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<String, byte[]>(topicName, content);
+				producer.send(producerRecord);
     		} catch (Throwable e) {
     			logger.error("failed to send message [{}]", e.getMessage());
     			throw new SendMQException(e);
