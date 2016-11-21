@@ -110,11 +110,17 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     private int                 batchSize          = 50;
     private boolean             useBatch           = true;
     private LoadStatsTracker    loadStatsTracker;
-    private String				brokerList;
-    private String				topicName 		   = "databus";
-    //private Producer<String, byte[]> producer;
-    private KafkaProducer<String, byte[]> producer;
+    // private Producer<String, byte[]> producer;
+    private KafkaProducer<String, byte[]> kafkaProducer;
     private MessagePack messagePack = new MessagePack();
+    // kafka props
+    private String kafkaTopic = "otterTopic";
+    private String kafkaBrokers;
+    private String kafkaAcks = "all";
+    private String kafkaBufferMemory = "33554432";
+    private String kafkaRetries = "3";
+    private String kafkaBatchSize = "16384";
+    private String kafkaLingerMs = "1";
 
     /**
      * 返回结果为已处理成功的记录
@@ -532,17 +538,25 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
 		
 		// kafka 0.10.0.0
 		Properties props = new Properties();
-		props.put("bootstrap.servers", brokerList);
-		props.put("client.id", "otterProducer");
+		props.put("bootstrap.servers", kafkaBrokers);
 		props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 		props.put("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
-		producer = new KafkaProducer<String, byte[]>(props);
+		props.put("acks", kafkaAcks);
+		props.put("buffer.memory", kafkaBufferMemory); // 32 * 1024 * 1024
+		// props.put("compression.type", "snappy");
+		props.put("retries", kafkaRetries);
+		props.put("batch.size", kafkaBatchSize);
+		props.put("client.id", "otterProducer");
+		// props.put("connections.max.idle.ms", 540000);
+		props.put("linger.ms", kafkaLingerMs);
+
+		kafkaProducer = new KafkaProducer<String, byte[]>(props);
     }
 
     public void destroy() throws Exception {
-        if (producer != null) {
+        if (kafkaProducer != null) {
         	try {
-				producer.close();
+				kafkaProducer.close();
 			} catch (Exception e) {
 				logger.error(e.getMessage());
 			}
@@ -768,8 +782,8 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
 //    			KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>(
 //        				topicName, content);
 //    			producer.send(data);
-				ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<String, byte[]>(topicName, content);
-				producer.send(producerRecord);
+				ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<String, byte[]>(kafkaTopic, content);
+				kafkaProducer.send(producerRecord);
     		} catch (Throwable e) {
     			logger.error("failed to send message [{}]", e.getMessage());
     			throw new SendMQException(e);
@@ -960,19 +974,60 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
         this.useBatch = useBatch;
     }
 
-	public String getBrokerList() {
-		return brokerList;
+	public String getKafkaTopic() {
+		return kafkaTopic;
 	}
 
-	public void setBrokerList(String brokerList) {
-		this.brokerList = brokerList;
+	public void setKafkaTopic(String kafkaTopic) {
+		this.kafkaTopic = kafkaTopic;
 	}
 
-	public String getTopicName() {
-		return topicName;
+	public String getKafkaBrokers() {
+		return kafkaBrokers;
 	}
 
-	public void setTopicName(String topicName) {
-		this.topicName = topicName;
+	public void setKafkaBrokers(String kafkaBrokers) {
+		this.kafkaBrokers = kafkaBrokers;
 	}
+
+	public String getKafkaAcks() {
+		return kafkaAcks;
+	}
+
+	public void setKafkaAcks(String kafkaAcks) {
+		this.kafkaAcks = kafkaAcks;
+	}
+
+	public String getKafkaBufferMemory() {
+		return kafkaBufferMemory;
+	}
+
+	public void setKafkaBufferMemory(String kafkaBufferMemory) {
+		this.kafkaBufferMemory = kafkaBufferMemory;
+	}
+
+	public String getKafkaRetries() {
+		return kafkaRetries;
+	}
+
+	public void setKafkaRetries(String kafkaRetries) {
+		this.kafkaRetries = kafkaRetries;
+	}
+
+	public String getKafkaBatchSize() {
+		return kafkaBatchSize;
+	}
+
+	public void setKafkaBatchSize(String kafkaBatchSize) {
+		this.kafkaBatchSize = kafkaBatchSize;
+	}
+
+	public String getKafkaLingerMs() {
+		return kafkaLingerMs;
+	}
+
+	public void setKafkaLingerMs(String kafkaLingerMs) {
+		this.kafkaLingerMs = kafkaLingerMs;
+	}
+
 }

@@ -33,8 +33,14 @@
 		<property name="retryWait" value="3000" />
 		<property name="poolSize" value="5" />
 		<property name="interceptor" ref="dbLoadInterceptor" />
-		<property name="brokerList" value="${otter.kafka.brokerList}" />
-		<property name="topicName" value="${otter.kafka.topicName}" />
+		<!-- kafka cfg -->
+		<property name="kafkaBrokers" value="${otter.kafka.brokers}" />
+		<property name="kafkaTopic" value="${otter.kafka.topic}" />
+		<property name="kafkaAcks" value="${otter.kafka.acks}" />
+		<property name="kafkaBufferMemory" value="${otter.kafka.buffer.memory}" />
+		<property name="kafkaRetries" value="${otter.kafka.retries}" />
+		<property name="kafkaBatchSize" value="${otter.kafka.batch.size}" />
+		<property name="kafkaLingerMs" value="${otter.kafka.linger.ms}" />
 	</bean>
 	
 	<bean id="fileLoadAction" class="org.springframework.aop.framework.ProxyFactoryBean">
