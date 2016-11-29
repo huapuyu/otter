@@ -953,6 +953,10 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
     public void setRetryWait(int retryWait) {
         this.retryWait = retryWait;
     }
+    
+    public void setbBatchSize(int batchSize) {
+    	this.batchSize = batchSize;
+    }
 
     public void setInterceptor(LoadInterceptor interceptor) {
         this.interceptor = interceptor;

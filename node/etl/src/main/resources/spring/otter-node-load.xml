@@ -33,6 +33,7 @@
 		<property name="retryWait" value="3000" />
 		<property name="poolSize" value="5" />
 		<property name="interceptor" ref="dbLoadInterceptor" />
+		<property name="batchSize" ref="${otter.batch.size}" />
 		<!-- kafka cfg -->
 		<property name="kafkaBrokers" value="${otter.kafka.brokers}" />
 		<property name="kafkaTopic" value="${otter.kafka.topic}" />
