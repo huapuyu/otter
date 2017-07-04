@@ -377,8 +377,12 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
                     public Boolean doInStatement(Statement stmt) throws SQLException, DataAccessException {
                         Boolean result = false;
                         if (dbDialect instanceof MysqlDialect && StringUtils.isNotEmpty(data.getDdlSchemaName())) {
-                            // 如果mysql，执行ddl时，切换到在源库执行的schema上
-                            result &= stmt.execute("use " + data.getDdlSchemaName());
+                        	// 如果mysql，执行ddl时，切换到在源库执行的schema上
+                            // result &= stmt.execute("use " +
+                            // data.getDdlSchemaName());
+
+                            // 解决当数据库名称为关键字如"Order"的时候,会报错,无法同步
+                            result &= stmt.execute("use `" + data.getDdlSchemaName() + "`");
                         }
                         result &= stmt.execute(data.getSql());
                         return result;
@@ -803,7 +807,12 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
             } else if (type.isUpdate()) {
                 boolean existOldKeys = !CollectionUtils.isEmpty(data.getOldKeys());
                 columns.addAll(data.getUpdatedColumns());// 只更新带有isUpdate=true的字段
-                columns.addAll(data.getKeys());
+                if (existOldKeys && dbDialect.isDRDS()) {
+                    // DRDS需要区分主键是否有变更
+                    columns.addAll(data.getUpdatedKeys());
+                } else {
+                    columns.addAll(data.getKeys());
+                }
                 if (existOldKeys) {
                     columns.addAll(data.getOldKeys());
                 }
@@ -823,9 +832,19 @@ public class DbLoadAction implements InitializingBean, DisposableBean {
 
                 Boolean isRequired = isRequiredMap.get(StringUtils.lowerCase(column.getColumnName()));
                 if (isRequired == null) {
-                    throw new LoadException(String.format("column name %s is not found in Table[%s]",
-                        column.getColumnName(),
-                        table.toString()));
+                    // 清理一下目标库的表结构,二次检查一下
+                    table = dbDialect.findTable(data.getSchemaName(), data.getTableName(), false);
+                    isRequiredMap = new HashMap<String, Boolean>();
+                    for (Column tableColumn : table.getColumns()) {
+                        isRequiredMap.put(StringUtils.lowerCase(tableColumn.getName()), tableColumn.isRequired());
+                    }
+
+                    isRequired = isRequiredMap.get(StringUtils.lowerCase(column.getColumnName()));
+                    if (isRequired == null) {
+                        throw new LoadException(String.format("column name %s is not found in Table[%s]",
+                            column.getColumnName(),
+                            table.toString()));
+                    }
                 }
 
                 Object param = null;
